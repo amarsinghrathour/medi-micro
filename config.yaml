@@ -1,0 +1,18 @@
+model:
+  vocab_size: 32000
+  dim: 1024
+  n_layers: 16
+  n_heads: 16
+  hidden_dim: 2816
+  max_seq_len: 1024
+  
+training:
+  batch_size: 4
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  epochs: 3
+  device: "mps"
+
+safety:
+  uncertainty_threshold: 0.6
+  refusal_message: "I am not certain about this. Please consult a doctor."
