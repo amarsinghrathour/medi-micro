@@ -63,6 +63,10 @@ Alternatively, you can run individual steps:
    ```bash
    uv run python src/inference.py
    ```
+5. **Interactive GUI Chat App**: Chat with the exported model using a modern graphical interface featuring real-time streaming and parameter controls (temperature, top-p, max tokens).
+   ```bash
+   uv run python src/chat_app.py
+   ```
 
 ## Development Phases
 Refer to `docs/engineering.md` for a deeper dive into the model architecture, the math behind the parameter count, and the safety protocols.

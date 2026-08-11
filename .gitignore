@@ -10,3 +10,6 @@ wheels/
 .venv
 data/*
 .env
+/checkpoints/*
+/hf_export/*
+/tensorboard_logs/*

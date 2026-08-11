@@ -66,6 +66,12 @@ def export_to_hf(custom_checkpoint_path="checkpoints/medi_micro_custom.pt", outp
     print(f"Exporting to {output_dir}...")
     os.makedirs(output_dir, exist_ok=True)
     hf_model.save_pretrained(output_dir)
+    
+    # 7. Export the tokenizer as well
+    print("Exporting tokenizer...")
+    from tokenizer import get_tokenizer
+    tokenizer = get_tokenizer()
+    tokenizer.save_pretrained(output_dir)
     print("✅ Export complete! Model is ready for Ollama / llama.cpp / Transformers.js")
 
 if __name__ == "__main__":
