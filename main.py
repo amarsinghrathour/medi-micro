@@ -9,7 +9,6 @@ if "HF_TOKEN" not in os.environ:
 import check_hardware
 from src.data_ingestion import main as ingest_data
 from src.train import train as train_model
-from src.export_bridge import export_to_hf
 
 def main():
     print("=== Medi-Micro Pipeline ===")
@@ -27,10 +26,6 @@ def main():
     # 3. Train Model
     print("\n--- 3. Training Model ---")
     train_model()
-    
-    # 4. Export Model
-    print("\n--- 4. Exporting Model ---")
-    export_to_hf()
     
     print("\n✅ Pipeline complete! Your model is exported and ready.")
 

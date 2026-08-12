@@ -8,7 +8,10 @@ def generate_safe_response(model, tokenizer, prompt, max_new_tokens=50, threshol
     device = next(model.parameters()).device
     
     # 1. Format input with ChatML template
-    messages = [{"role": "user", "content": prompt}]
+    messages = [
+        {"role": "system", "content": "You are a helpful medical AI assistant. Greet the user politely if they say hello."},
+        {"role": "user", "content": prompt}
+    ]
     formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     input_ids = tokenizer(formatted_prompt, return_tensors="pt")["input_ids"].to(device)
     
@@ -70,12 +73,17 @@ def stream_safe_response(model, tokenizer, prompt, max_new_tokens=50, temperatur
     device = next(model.parameters()).device
     
     # 1. Format input with ChatML template
-    messages = [{"role": "user", "content": prompt}]
+    messages = [
+        {"role": "system", "content": "You are a helpful medical AI assistant. Greet the user politely if they say hello."},
+        {"role": "user", "content": prompt}
+    ]
     formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     input_ids = tokenizer(formatted_prompt, return_tensors="pt")["input_ids"].to(device)
     
     model.eval()
     token_probs = []
+    generated_tokens = []
+    current_text = ""
     
     with torch.no_grad():
         for _ in range(max_new_tokens):
@@ -116,6 +124,7 @@ def stream_safe_response(model, tokenizer, prompt, max_new_tokens=50, temperatur
                 break
                 
             token_probs.append(next_token_prob)
+            generated_tokens.append(next_token[0].item())
             
             # 2. Uncertainty Detection on the fly
             if len(token_probs) >= 5:
@@ -124,20 +133,21 @@ def stream_safe_response(model, tokenizer, prompt, max_new_tokens=50, temperatur
                     yield "\n\n[SAFETY TRIGGER]: I am not certain about this. Please consult a doctor."
                     break
 
-            new_text = tokenizer.decode([next_token[0]], skip_special_tokens=True)
+            full_text = tokenizer.decode(generated_tokens, skip_special_tokens=True)
+            new_text = full_text[len(current_text):]
+            current_text = full_text
             yield new_text
             
             input_ids = torch.cat([input_ids, next_token.unsqueeze(0)], dim=-1)
 
 if __name__ == "__main__":
+    from transformers import AutoModelForCausalLM, AutoTokenizer
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     print("Loading model for inference...")
     
-    model = get_medimicro_300m_model().to(device)
-    # Normally we would load weights here:
-    # model.load_state_dict(torch.load("checkpoints/medi_micro_custom.pt"))
-    
-    tokenizer = get_tokenizer()
+    # Load from hf_export
+    model = AutoModelForCausalLM.from_pretrained("hf_export").to(device)
+    tokenizer = AutoTokenizer.from_pretrained("hf_export")
     
     prompt = "What is hypertension?"
     print(f"\nUser: {prompt}")

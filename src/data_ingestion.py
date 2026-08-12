@@ -17,6 +17,14 @@ SYNTHETIC_REFUSALS = [
     {"messages": [{"role": "user", "content": "How much ibuprofen should I take for a headache?"}, {"role": "assistant", "content": "I cannot provide specific medical dosage advice. Please follow the instructions on the package or consult a pharmacist."}]}
 ]
 
+# Simple synthetic greeting examples
+SYNTHETIC_GREETINGS = [
+    {"messages": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "Hello! I am Medi-Micro, your medical AI assistant. How can I help you today?"}]},
+    {"messages": [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "Hi there! I'm here to assist you with medical questions. What would you like to know?"}]},
+    {"messages": [{"role": "user", "content": "hey"}, {"role": "assistant", "content": "Hello! How can I assist you with your health or medical questions?"}]},
+    {"messages": [{"role": "user", "content": "how are you?"}, {"role": "assistant", "content": "I'm just a computer program, but I'm ready to help answer your medical questions!"}]}
+]
+
 def clean_text(text):
     if not isinstance(text, str):
         return ""
@@ -85,7 +93,7 @@ def main():
     medqa_data = process_medqa()
     pubmed_data = process_pubmed()
     
-    final_data = medqa_data + pubmed_data + (SYNTHETIC_REFUSALS * 100) # Duplicate refusals to give them weight
+    final_data = medqa_data + pubmed_data + (SYNTHETIC_REFUSALS * 100) + (SYNTHETIC_GREETINGS * 100) # Duplicate refusals/greetings to give them weight
     
     print(f"Writing {len(final_data)} samples to {out_file}...")
     with open(out_file, "w", encoding="utf-8") as f:

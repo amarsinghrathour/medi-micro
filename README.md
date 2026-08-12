@@ -51,22 +51,17 @@ Alternatively, you can run individual steps:
    ```bash
    uv run python src/data_ingestion.py
    ```
-2. **Train Model**: Runs the custom from-scratch PyTorch training loop utilizing MPS mixed precision.
-   ```bash
-   uv run python src/train.py
-   ```
-3. **Export Bridge**: Converts your custom PyTorch checkpoint into the standard Hugging Face format for Ollama / Transformers.js compatibility.
-   ```bash
-   uv run python src/export_bridge.py
-   ```
-4. **Safe Inference**: Test the model with uncertainty thresholding active.
-   ```bash
-   uv run python src/inference.py
-   ```
-5. **Interactive GUI Chat App**: Chat with the exported model using a modern graphical interface featuring real-time streaming and parameter controls (temperature, top-p, max tokens).
-   ```bash
-   uv run python src/chat_app.py
-   ```
+2. **Fine-tune the Model**
+Train the model using LoRA (Low-Rank Adaptation) on TinyLlama. This will download the base model, fine-tune it on your local data, and save the merged model to `hf_export`.
+```bash
+uv run python src/train.py
+```
+
+3. **Start the Chat App**
+Once the model is exported to `hf_export`, you can launch the GUI!
+```bash
+uv run python src/chat_app.py
+```
 
 ## Development Phases
 Refer to `docs/engineering.md` for a deeper dive into the model architecture, the math behind the parameter count, and the safety protocols.

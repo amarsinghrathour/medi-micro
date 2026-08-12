@@ -4,8 +4,9 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
-from model import get_medimicro_300m_model
-from tokenizer import get_tokenizer
+from peft import LoraConfig, get_peft_model
+from transformers import AutoModelForCausalLM, Trainer, TrainingArguments
+from src.tokenizer import get_tokenizer
 
 class ChatMLDataset(Dataset):
     def __init__(self, data_file, tokenizer, max_length=1024):
@@ -40,64 +41,71 @@ class ChatMLDataset(Dataset):
         labels = input_ids.clone()
         labels[labels == self.tokenizer.pad_token_id] = -100
         
-        return input_ids, labels
+        return {"input_ids": input_ids, "labels": labels}
 
 def train():
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     print(f"Training on {device}")
     
     tokenizer = get_tokenizer()
-    model = get_medimicro_300m_model().to(device)
+    
+    print("Loading base model...")
+    base_model = AutoModelForCausalLM.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    
+    # Configure LoRA
+    print("Applying LoRA...")
+    lora_config = LoraConfig(
+        r=16,
+        lora_alpha=32,
+        target_modules=["q_proj", "v_proj"],
+        lora_dropout=0.05,
+        bias="none",
+        task_type="CAUSAL_LM"
+    )
+    model = get_peft_model(base_model, lora_config)
+    model = model.to(device)
     
     # Check parameters
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f"Total Parameters: {total_params / 1e6:.2f}M")
+    model.print_trainable_parameters()
     
     dataset = ChatMLDataset("data/train.jsonl", tokenizer)
-    dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
+    # Configure Trainer
+    print("Setting up Trainer...")
+    training_args = TrainingArguments(
+        output_dir="./hf_export/checkpoints",
+        per_device_train_batch_size=4,
+        num_train_epochs=3,
+        learning_rate=1e-4,
+        weight_decay=0.01,
+        logging_steps=10,
+        save_strategy="no",
+        remove_unused_columns=False,
+        dataloader_pin_memory=False,  # Silences the MPS pin_memory warning
+    )
     
-    epochs = 3
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=dataset,
+    )
     
-    for epoch in range(epochs):
-        model.train()
-        total_loss = 0
-        pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{epochs}")
-        
-        for batch_idx, (input_ids, labels) in enumerate(pbar):
-            input_ids, labels = input_ids.to(device), labels.to(device)
-            
-            optimizer.zero_grad()
-            
-            # Forward pass with mixed precision for MPS
-            with torch.autocast(device_type="mps", dtype=torch.bfloat16) if str(device) == "mps" else torch.autocast(device_type="cpu"):
-                logits = model(input_ids)
-                
-                # Shift so that tokens < n predict n
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                
-                loss = nn.functional.cross_entropy(
-                    shift_logits.view(-1, shift_logits.size(-1)), 
-                    shift_labels.view(-1),
-                    ignore_index=-100
-                )
-            
-            # Backward pass
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-            
-            total_loss += loss.item()
-            pbar.set_postfix(loss=f"{loss.item():.4f}")
-            
-        print(f"Epoch {epoch+1} Average Loss: {total_loss / len(dataloader):.4f}")
-        
-    print("Training complete! Saving model...")
-    os.makedirs("checkpoints", exist_ok=True)
-    torch.save(model.state_dict(), "checkpoints/medi_micro_custom.pt")
-    print("Saved to checkpoints/medi_micro_custom.pt")
+    print("Starting training...")
+    trainer.train()
+    
+    print("Training complete! Merging LoRA weights...")
+    model = model.to("cpu")
+    model = model.merge_and_unload()  # type: ignore
+    
+    print("Saving fully merged model to hf_export...")
+    os.makedirs("hf_export", exist_ok=True)
+    
+    assert model is not None, "Model should not be None after merge"
+    assert tokenizer is not None, "Tokenizer should not be None"
+    
+    model.save_pretrained("hf_export") # type: ignore
+    tokenizer.save_pretrained("hf_export")
+    print("Saved to hf_export! You can now use chat_app.py or inference.py.")
 
 if __name__ == "__main__":
     train()

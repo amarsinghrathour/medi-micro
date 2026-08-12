@@ -2,45 +2,22 @@
 
 ## Architecture Overview
 
-Medi-Micro is designed as a highly efficient, decoder-only Transformer specifically targeted for Apple Silicon (M4) using PyTorch's Metal Performance Shaders (MPS) backend. 
+Medi-Micro is designed as a highly efficient medical Q&A model targeting Apple Silicon (M4). Rather than training a model completely from scratch, we use **LoRA (Low-Rank Adaptation)** to fine-tune the pre-trained **TinyLlama-1.1B** base model.
 
-Crucially, **the architecture is built completely from scratch in PyTorch**, but its mathematical formulation aligns perfectly with the standard Llama architecture. This allows us to train a custom model from the ground up, while retaining the ability to export it to popular inference systems (like Ollama and Transformers.js).
-
-### Model Parameters (~266M)
-To achieve a model size under 1 GB (specifically ~550 MB in FP16), the architecture is configured as follows:
-- **Vocabulary Size (`vocab_size`)**: 32,000 (Uses Hugging Face `TinyLlama` tokenizer for compatibility)
-- **Hidden Dimension (`d_model`)**: 1024
-- **Number of Layers (`num_layers`)**: 16
-- **Number of Attention Heads (`num_heads`)**: 16
-- **Feed-Forward Dimension (`hidden_dim`)**: 2816
-- **Max Sequence Length**: 1024
-
-#### Parameter Breakdown:
-- **Embeddings**: 32,000 × 1024 ≈ 32.7M
-- **Attention**: 16 × (4 × 1024²) ≈ 67.1M
-- **Feed-Forward**: 16 × (2 × 1024 × 2816 + 2816 × 1024) ≈ 138.4M
-- **Output Projection**: 32,000 × 1024 ≈ 32.7M
-- **Total**: ~270M parameters.
+This approach offers significant advantages:
+- **Efficiency**: LoRA drastically reduces the number of trainable parameters by injecting small, low-rank matrices into the attention layers (`q_proj` and `v_proj`).
+- **Performance**: HuggingFace's `Trainer` API is utilized for the training loop, which automatically handles optimal device placement (MPS on Apple Silicon), mixed-precision scaling, logging, and gradient accumulation.
+- **Base Knowledge**: By leveraging TinyLlama (1.1B parameters), the model already possesses a strong foundational understanding of English grammar and general knowledge before we introduce specialized medical data.
 
 ### Tokenization Strategy
-To avoid reinventing the wheel and ensure ecosystem compatibility, we use the `TinyLlama` tokenizer from Hugging Face. This provides a robust 32,000 subword vocabulary out-of-the-box, complete with standard special tokens required for ChatML formatting.
+We use the standard `TinyLlama` tokenizer from Hugging Face. This provides a robust 32,000 subword vocabulary out-of-the-box, complete with standard special tokens required for ChatML formatting.
 
-### Advanced Architectural Choices (Implemented From Scratch)
-- **Rotary Positional Embeddings (RoPE)**: Provides better relative position information without the parameter overhead of learned absolute embeddings.
-- **RMSNorm**: Faster and computationally lighter than standard LayerNorm.
-- **SwiGLU**: Modern activation function used in the Feed-Forward networks.
-- **Mixed Precision**: We use PyTorch `autocast` tailored for MPS to speed up training while maintaining numerical stability.
+## Training & Export Pipeline
 
-## The Export Bridge
-
-Because we wrote the model completely from scratch using our own PyTorch classes (`MediMicroModel`, `TransformerBlock`), systems like Ollama cannot natively read our checkpoints.
-
-To solve this, we implemented an **Export Bridge** (`src/export_bridge.py`). 
-This script:
-1. Instantiates our custom PyTorch model and loads the trained weights.
-2. Initializes a standard Hugging Face `LlamaForCausalLM` with identical dimensions.
-3. Dynamically maps our custom state dictionary keys (e.g., `layers.0.attention.wq.weight`) to the standard Hugging Face keys (`model.layers.0.self_attn.q_proj.weight`).
-4. Saves the model using `save_pretrained()`, generating the standard `config.json` and `safetensors` files that Ollama and Transformers.js require.
+Because we use the HuggingFace `Trainer` and `peft` (Parameter-Efficient Fine-Tuning) libraries natively, the pipeline is vastly simplified:
+1. **Train**: The `Trainer` optimizes the LoRA weights on our custom medical datasets.
+2. **Merge & Export**: At the end of training, the adapter weights are seamlessly merged back into the base TinyLlama architecture (`merge_and_unload()`).
+3. **Native Support**: The resulting merged model is saved using `save_pretrained()` to the `hf_export` directory. The output is a standard HuggingFace model (`config.json`, `safetensors`), entirely ready to be loaded by inference systems like Ollama or Transformers.js—**no manual export bridge required!**
 
 ## Safety & Hallucination Mitigation Protocol
 
